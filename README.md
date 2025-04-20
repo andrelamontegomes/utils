@@ -1,5 +1,9 @@
 # Publically available scripts
-### Others I keep to myself or how it was coded embarress me more than usual
+
+## Description
+Collection of utility scripts and tools 
+
+Others I keep to myself or how it was coded embarress me more than usual
 
 ## gus (git user switch)
 Switch between Git user profiles easily
