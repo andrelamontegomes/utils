@@ -15,7 +15,7 @@ if ! command -v gum &> /dev/null; then
 fi
 
 # Parse arguments
-BASE="main"
+BASE=""
 NO_VERIFY=""
 
 for arg in "$@"; do
@@ -25,6 +25,54 @@ for arg in "$@"; do
         BASE="$arg"
     fi
 done
+
+# Auto-detect base branch if not specified
+if [ -z "$BASE" ]; then
+    # Try to get the default branch from origin
+    if git rev-parse --verify origin/HEAD &>/dev/null; then
+        BASE=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+    fi
+
+    # Fallback to common branch names
+    if [ -z "$BASE" ]; then
+        for branch in main master; do
+            if git rev-parse --verify "$branch" &>/dev/null || git rev-parse --verify "origin/$branch" &>/dev/null; then
+                BASE="$branch"
+                break
+            fi
+        done
+    fi
+
+    # Final fallback
+    if [ -z "$BASE" ]; then
+        BASE="main"
+    fi
+fi
+
+# Scold user if they're still using master
+if [ "$BASE" = "master" ]; then
+    gum style --border double --border-foreground 208 --padding "1 2" --margin "1 0" \
+        "$(gum style --bold --foreground 208 '⚠️  SERIOUSLY?!')" \
+        "" \
+        "$(gum style --foreground 208 "You're still using 'master' as your default branch?")" \
+        "$(gum style --foreground 240 "It's $(date +%Y). Time to rename it to 'main'.")" \
+        "" \
+        "$(gum style --foreground 99 "Run this to fix it:")" \
+        "$(gum style --foreground 240 "  git branch -m master main")" \
+        "$(gum style --foreground 240 "  git push -u origin main")" \
+        "$(gum style --foreground 240 "  git push origin --delete master")"
+    echo ""
+    if gum confirm "Continue anyway with 'master'?"; then
+        gum style --foreground 208 --bold "LOL, nice try!"
+        echo ""
+        gum style --foreground 240 "Go rename that branch and come back when you're ready to join us in 2025."
+        exit 1
+    else
+        gum style --foreground 240 "Good choice. Go rename that branch!"
+        exit 1
+    fi
+    echo ""
+fi
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
