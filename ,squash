@@ -3,8 +3,16 @@
 # Git Squash Script
 # Squashes all commits on current branch back to base branch (default: main)
 # Usage: ./git-squash.sh [base-branch] [--no-verify]
+# Requires: gum (https://github.com/charmbracelet/gum)
 
 set -e
+
+# Check if gum is installed
+if ! command -v gum &> /dev/null; then
+    echo "Error: gum is not installed"
+    echo "Install it with: brew install gum"
+    exit 1
+fi
 
 # Parse arguments
 BASE="main"
@@ -22,7 +30,25 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 # Check if we're on the base branch
 if [ "$BRANCH" = "$BASE" ]; then
-    echo "Error: Cannot squash $BASE into itself"
+    gum style --foreground 196 "Error: Cannot squash $BASE into itself"
+    exit 1
+fi
+
+# Check if base branch exists (try origin/BASE if BASE doesn't exist locally)
+if ! git rev-parse --verify "$BASE" &>/dev/null; then
+    if git rev-parse --verify "origin/$BASE" &>/dev/null; then
+        BASE="origin/$BASE"
+    else
+        gum style --foreground 196 "Error: Base branch '$BASE' not found (tried local and origin/$BASE)"
+        exit 1
+    fi
+fi
+
+# Get the merge base
+MERGE_BASE=$(git merge-base $BASE HEAD)
+
+if [ -z "$MERGE_BASE" ]; then
+    gum style --foreground 196 "Error: Could not find common ancestor between $BASE and $BRANCH"
     exit 1
 fi
 
@@ -30,26 +56,28 @@ fi
 FIRST_MSG=$(git log $BASE..HEAD --format=%B --reverse | head -n 1)
 
 if [ -z "$FIRST_MSG" ]; then
-    echo "Error: No commits found between $BASE and $BRANCH"
+    gum style --foreground 196 "Error: No commits found between $BASE and $BRANCH"
     exit 1
 fi
 
-# Get the merge base
-MERGE_BASE=$(git merge-base $BASE HEAD)
-
-echo "Squashing commits from $BASE to $BRANCH..."
-echo "Using commit message: $FIRST_MSG"
-echo ""
+# Show commit summary
+gum style --border rounded --padding "1 2" --margin "1 0" \
+    "$(gum style --bold --foreground 212 'Squash Summary')" \
+    "" \
+    "Base branch: $(gum style --foreground 99 "$BASE")" \
+    "Current branch: $(gum style --foreground 99 "$BRANCH")" \
+    "Merge base: $(gum style --foreground 240 "${MERGE_BASE:0:8}")" \
+    "" \
+    "Commit message: $(gum style --foreground 120 "$FIRST_MSG")"
 
 # Confirm before proceeding
-read -p "Continue? (y/n) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted"
+if ! gum confirm "Continue with squash?"; then
+    gum style --foreground 240 "Aborted"
     exit 1
 fi
 
 # Squash commits
+gum spin --spinner dot --title "Squashing commits..." -- sleep 0.5
 git reset --soft $MERGE_BASE
 
 # Store the original HEAD in case we need to revert
@@ -57,23 +85,21 @@ ORIGINAL_HEAD=$(git rev-parse HEAD@{1})
 
 # Try to commit, revert if it fails
 if ! git commit $NO_VERIFY -m "$FIRST_MSG"; then
-    echo ""
-    echo "Error: Commit failed due to git hooks"
-    echo "Reverting changes..."
+    gum style --foreground 196 "Error: Commit failed due to git hooks"
+    gum spin --spinner dot --title "Reverting changes..." -- sleep 0.5
     git reset --hard $ORIGINAL_HEAD
-    echo "Reverted to original state"
+    gum style --foreground 120 "Reverted to original state"
     exit 1
 fi
 
-echo "Commits squashed successfully!"
+gum style --foreground 120 "✓ Commits squashed successfully!"
 echo ""
 
 # Push with force-with-lease
-read -p "Push to remote with --force-with-lease? (y/n) " -n 1 -r
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    git push --force-with-lease origin $BRANCH
-    echo "Pushed to origin/$BRANCH"
+if gum confirm "Push to remote with --force-with-lease?"; then
+    gum spin --spinner dot --title "Pushing to origin/$BRANCH..." -- \
+        git push --force-with-lease origin $BRANCH
+    gum style --foreground 120 "✓ Pushed to origin/$BRANCH"
 else
-    echo "Skipped push. Run manually: git push --force-with-lease origin $BRANCH"
+    gum style --foreground 240 "Skipped push. Run manually: git push --force-with-lease origin $BRANCH"
 fi
